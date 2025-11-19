@@ -34,23 +34,44 @@ def create_df(raw_data):
 # def has_noise(noise_indicator):
 #     return (noise_indicator > 0).any() # returns true if any entry > 0 from channel 0
 
-def preprocess_events(raw_df, noise_df=None, frac_inj_cut=0.1):
-    df = raw_df.copy()
+def preprocess_events(raw_df, noise_df, frac_inj_cut=0.1):
+    signal_df = raw_df.copy()
 
     # clean freq col by converting to numeric and dropping anything that is non numeric 
-    df['Laser Frequency (THz)'] = pd.to_numeric(df['Laser Frequency (THz)'], errors='coerce')
-    df = df.dropna(subset=['Laser Frequency (THz)'])
+    signal_df['Laser Frequency (THz)'] = pd.to_numeric(signal_df['Laser Frequency (THz)'], errors='coerce')
+    signal_df = signal_df.dropna(subset=['Laser Frequency (THz)'])
 
     # remove injection region by cutting first x% of points
-    df = df.sort_values('Laser Frequency (THz)').reset_index(drop=True)
-    n_cut = int(len(df) * frac_inj_cut)
-    df = df.iloc[n_cut:]
+    signal_df = signal_df.sort_values('Laser Frequency (THz)').reset_index(drop=True)
+    n_cut = int(len(signal_df) * frac_inj_cut)
+    signal_df = signal_df.iloc[n_cut:]
 
     # electrical noise handling 
-    if noise_df is not None:
-        print(noise_df)
+    # if noise_df is not None and not noise_df.empty:
+    #     # reliable indicators for both signal_df and noise_df
+    #      join_cols = [
+    #         col for col in ('Cycle No.', 'Time (s)', 'Approx Time')
+    #         if col in signal_df.columns and col in noise_df.columns
+    #     ]
+         
+    #      if join_cols:
+    #         # keep unique noise events for the join keys
+    #         noise_keys = noise_df[join_cols].drop_duplicates()
 
-    return df
+    #         # mark rows that exist in the noise dataframe and drop them
+    #         df_filtered = signal_df.merge(
+    #             noise_keys.assign(_noise_hit=True),
+    #             on=join_cols,
+    #             how='left'
+    #         )
+
+    #         df_filtered = df_filtered[df_filtered['_noise_hit'] != True].drop(columns=['_noise_hit'])
+    #         rows_removed = df_filtered[df_filtered['_noise_hit'] == True].drop(columns=['_noise_hit'])
+    #         print(df_filtered)
+    #         print(rows_removed)
+    #         return df_filtered
+         
+    return signal_df
 
 # def doppler_shift(dataset, isotope): 
     # importlib.reload(doppler_shift_2025)

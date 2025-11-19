@@ -31,43 +31,38 @@ def create_df(raw_data):
                          'Laser Frequency (THz)': raw_data[:, 2], 'Power (mW)': raw_data[:, 3], 
                          'Approx Time': raw_data[:, 4], 'SDUMP': raw_data[:, 5]})
 
+# def has_noise(noise_indicator):
+#     return (noise_indicator > 0).any() # returns true if any entry > 0 from channel 0
+
+def preprocess_events(raw_df, noise_df=None, frac_inj_cut=0.1):
+    df = raw_df.copy()
+
+    # clean freq col by converting to numeric and dropping anything that is non numeric 
+    df['Laser Frequency (THz)'] = pd.to_numeric(df['Laser Frequency (THz)'], errors='coerce')
+    df = df.dropna(subset=['Laser Frequency (THz)'])
+
+    # remove injection region by cutting first x% of points
+    df = df.sort_values('Laser Frequency (THz)').reset_index(drop=True)
+    n_cut = int(len(df) * frac_inj_cut)
+    df = df.iloc[n_cut:]
+
+    # electrical noise handling 
+    if noise_df is not None:
+        print(noise_df)
+
+    return df
+
 # def doppler_shift(dataset, isotope): 
     # importlib.reload(doppler_shift_2025)
     # doppler_df = dataset.copy()
     # freq = doppler_df['Laser Frequency (THz)']
-    # measured_voltage = doppler_df['LE Probe']
     # shifted_freq = doppler_shift_2025.getshift(freq, isotope, measured_voltage)
     # doppler_df['Laser Frequency (THz)'] = shifted_freq
     # return doppler_df
 
-def process_tdms(raw_df):
+def bin_events(df):
     step_size = 0.001 # nm 
     bin_width_thz = 0.00008 
-    # bins = 50
-
-    # wavelengths_raw = raw_df['Laser Frequency (THz)']
-    # wavelengths_raw = pd.to_numeric(wavelengths_raw, errors='coerce')
-    # wavelengths_raw = wavelengths_raw.dropna()
-
-    # # counts_df = pd.DataFrame({'Freq': wavelengths_raw})
-    # # counts_df = wavelengths_raw.value_counts().reset_index()
-    # # counts_df.columns = ['Freq', 'Count']
-        
-    # # counts_df = counts_df.sort_values(by='Freq', ascending=True).reset_index()
-
-    # raw_df['Freq bin'] = pd.cut(raw_df['Laser Frequency (THz)'], bins, right=False)
-    # # raw_df = raw_df[raw_df['Freq bin'] >= 400]
-
-    # binned_df = raw_df.groupby('Freq bin', observed=True).size().reset_index(name='Count')
-    # binned_df['Bin center'] = binned_df['Freq bin'].apply(lambda x: x.mid)
-    # binned_df = binned_df[binned_df['Count'] > 0]
-    # binned_df.columns = ['Freq bin', 'Count', 'Bin center']
-
-    df = raw_df.copy()
-    # df = df[df['Time (s)'] <= 90].reset_index(drop=True)
-    df['Laser Frequency (THz)'] = pd.to_numeric(df['Laser Frequency (THz)'], errors='coerce')
-    df = df.dropna(subset=['Laser Frequency (THz)'])
-    df = df[df['Laser Frequency (THz)'] > 423.349].reset_index(drop=True)
 
     fmin = df['Laser Frequency (THz)'].min()
     fmax = df['Laser Frequency (THz)'].max()
@@ -76,12 +71,12 @@ def process_tdms(raw_df):
     bins = np.arange(start, stop + 0.5*bin_width_thz, bin_width_thz)
 
     df['Freq bin'] = pd.cut(df['Laser Frequency (THz)'], bins, right=False)  
+
     binned_df = (df
                  .groupby('Freq bin', observed=True)
                  .size()
                  .reset_index(name='Count'))
 
-    # binned_df = binned_df[binned_df['Count'] > 0]
     binned_df['Bin center'] = binned_df['Freq bin'].apply(lambda iv: iv.mid)
 
     return binned_df
@@ -90,8 +85,22 @@ def main(folder_path):
     for tdms_path in natsorted(folder_path.glob("*.tdms"), key=lambda p: p.name):
         filename = tdms_path.name
         isotope = next((value for key, value in isotope_mapping.items() if key in filename), None)
+
+        # Read signal channel
         raw_data = read_tdms(folder_path, filename, channel=1) 
         raw_df = create_df(raw_data)
+
+        # Read noise channel
+        try:
+            ch0 = read_tdms(folder_path, filename, channel=0)
+            ch0_info = create_df(ch0)
+        except Exception:
+            # channel 0 missing or unreadable → no noise info
+            ch0 = None
+            ch0_info = None
+      
+        preprocessed_df = preprocess_events(raw_df, noise_df=ch0_info)
         # doppler_df = doppler_shift_calc(raw_df, isotope)
-        binned_df = process_tdms(raw_df)
+        binned_df = bin_events(preprocessed_df)
+
         yield binned_df, filename, isotope

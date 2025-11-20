@@ -47,29 +47,33 @@ def preprocess_events(raw_df, noise_df, frac_inj_cut=0.1):
     signal_df = signal_df.iloc[n_cut:]
 
     # electrical noise handling 
-    # if noise_df is not None and not noise_df.empty:
-    #     # reliable indicators for both signal_df and noise_df
-    #      join_cols = [
-    #         col for col in ('Cycle No.', 'Time (s)', 'Approx Time')
-    #         if col in signal_df.columns and col in noise_df.columns
-    #     ]
-         
-    #      if join_cols:
-    #         # keep unique noise events for the join keys
-    #         noise_keys = noise_df[join_cols].drop_duplicates()
+    if noise_df is not None and not noise_df.empty:
+        # reliable indicators for both signal_df and noise_df
+        join_cols = [
+            col for col in ('Cycle No.', 'Time (s)', 'Approx Time')
+            if col in signal_df.columns and col in noise_df.columns
+        ]
 
-    #         # mark rows that exist in the noise dataframe and drop them
-    #         df_filtered = signal_df.merge(
-    #             noise_keys.assign(_noise_hit=True),
-    #             on=join_cols,
-    #             how='left'
-    #         )
+        # keep unique noise events for the join keys
+        noise_keys = noise_df[join_cols].dropna().drop_duplicates()
+        print(noise_keys)
 
-    #         df_filtered = df_filtered[df_filtered['_noise_hit'] != True].drop(columns=['_noise_hit'])
-    #         rows_removed = df_filtered[df_filtered['_noise_hit'] == True].drop(columns=['_noise_hit'])
-    #         print(df_filtered)
-    #         print(rows_removed)
-    #         return df_filtered
+        df_filtered = signal_df.merge(
+            noise_keys.assign(_noise_hit=True),
+            on=join_cols,
+            how='left'
+        )
+        
+        # df_filtered = df_filtered[df_filtered['_noise_hit'] != True].drop(columns=['_noise_hit'])
+
+        noise_mask = df_filtered['_noise_hit'] == True
+        df_removed = df_filtered[noise_mask].drop(columns=['_noise_hit'])
+        df_clean = df_filtered[~noise_mask].drop(columns=['_noise_hit'])
+
+        print("Removed rows:")
+        print(df_removed)
+    
+            # return df_filtered
          
     return signal_df
 

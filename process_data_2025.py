@@ -34,7 +34,7 @@ def create_df(raw_data):
 # def has_noise(noise_indicator):
 #     return (noise_indicator > 0).any() # returns true if any entry > 0 from channel 0
 
-def preprocess_events(raw_df, noise_df, frac_inj_cut=0.1):
+def preprocess_events(raw_df, noise_df, frac_inj_cut=0.15):
     signal_df = raw_df.copy()
 
     # clean freq col by converting to numeric and dropping anything that is non numeric 
@@ -48,32 +48,53 @@ def preprocess_events(raw_df, noise_df, frac_inj_cut=0.1):
 
     # electrical noise handling 
     if noise_df is not None and not noise_df.empty:
-        # reliable indicators for both signal_df and noise_df
-        join_cols = [
-            col for col in ('Cycle No.', 'Time (s)', 'Approx Time')
-            if col in signal_df.columns and col in noise_df.columns
-        ]
+        #### Removing common rows between channels 0 and 1 ####
+        # # reliable indicators for both signal_df and noise_df
+        # join_cols = [
+        #     col for col in ('Cycle No.', 'Time (s)', 'Approx Time')
+        #     if col in signal_df.columns and col in noise_df.columns
+        # ]
 
-        # keep unique noise events for the join keys
-        noise_keys = noise_df[join_cols].dropna().drop_duplicates()
-        print(noise_keys)
+        # # keep unique noise events for the join keys
+        # noise_keys = noise_df[join_cols].dropna().drop_duplicates()
 
-        df_filtered = signal_df.merge(
-            noise_keys.assign(_noise_hit=True),
-            on=join_cols,
-            how='left'
-        )
-        
-        # df_filtered = df_filtered[df_filtered['_noise_hit'] != True].drop(columns=['_noise_hit'])
-
-        noise_mask = df_filtered['_noise_hit'] == True
-        df_removed = df_filtered[noise_mask].drop(columns=['_noise_hit'])
-        df_clean = df_filtered[~noise_mask].drop(columns=['_noise_hit'])
-
-        print("Removed rows:")
-        print(df_removed)
+        # df_filtered = signal_df.merge(
+        #     noise_keys.assign(_noise_hit=True),
+        #     on=join_cols,
+        #     how='left'
+        # )
     
-            # return df_filtered
+        # noise_mask = df_filtered['_noise_hit'] == True
+        # df_removed = df_filtered[noise_mask].drop(columns=['_noise_hit'])
+        # df_clean = df_filtered[~noise_mask].drop(columns=['_noise_hit'])
+
+        # # print(noise_keys)
+        # # print("Removed rows:")
+        # # print(df_removed)
+        # # print(signal_df)
+        # print('Noise in:')
+        # print(noise_df['Cycle No.'].nunique())
+    
+        # return df_clean
+
+        #### Removing entire cycle if noise occurs ####.      
+        # cycles that have noise (from noise_df)
+        noisy_cycles = (
+            noise_df
+            .dropna(subset=['Cycle No.'])
+            ['Cycle No.']
+            .unique()
+        )
+
+        # print which cycles had noise
+        print(f"Noise in {len(noisy_cycles)} cycles: {noisy_cycles}")
+
+        # drop entire noisy cycles from signal_df
+        df_clean = (
+            signal_df[~signal_df['Cycle No.'].isin(noisy_cycles)]
+            .reset_index(drop=True)
+        )
+        return df_clean
          
     return signal_df
 

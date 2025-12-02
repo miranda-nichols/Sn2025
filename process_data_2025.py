@@ -32,15 +32,13 @@ def create_df(raw_data):
                          'Approx Time': raw_data[:, 4], 'SDUMP': raw_data[:, 5]})
 
 def noise_handling(raw_df, noise_df):
-    signal_df = raw_df.copy()
+    signal_df = raw_df
 
-    # clean freq col by converting to numeric and dropping anything that is non numeric 
-    signal_df['Laser Frequency (THz)'] = pd.to_numeric(signal_df['Laser Frequency (THz)'], errors='coerce')
+    # clean freq col dropping anything that is non numeric 
     signal_df = signal_df.dropna(subset=['Laser Frequency (THz)'])
 
-    # electrical noise handling 
+    # electrical noise handling by removing entire cycle
     if noise_df is not None and not noise_df.empty:
-        #### Removing entire cycle if noise occurs ####      
         # cycles that have noise (from noise_df)
         noisy_cycles = (
             noise_df
@@ -49,17 +47,12 @@ def noise_handling(raw_df, noise_df):
             .unique()
         )
 
-        # print which cycles had noise
-        # print(f"Noise in {len(noisy_cycles)} cycles: {noisy_cycles}")
-
         # drop entire noisy cycles from signal_df
-        df_clean = (
-            signal_df[~signal_df['Cycle No.'].isin(noisy_cycles)]
-            .reset_index(drop=True)
-        )
+        mask = ~signal_df['Cycle No.'].isin(noisy_cycles)
+        df_clean = signal_df.loc[mask].reset_index(drop=True)
+        # print(f"Noise in {len(noisy_cycles)} cycles: {noisy_cycles}")
     
         return df_clean
-         
     return signal_df
 
 # def doppler_shift(dataset, isotope): 
@@ -70,34 +63,44 @@ def noise_handling(raw_df, noise_df):
     # doppler_df['Laser Frequency (THz)'] = shifted_freq
     # return doppler_df
 
-def bin_events(df, bin_width_thz=5e-5):
-    # Extract frequency as a NumPy array
+def bin_events(df):
+    df = df[df['Laser Frequency (THz)'] > 0.0].reset_index(drop=True)
     freq = df['Laser Frequency (THz)'].to_numpy()
+    bin_width = 6e-5
 
-    fmin = freq.min()
-    fmax = freq.max()
+    # Build uniform grid and histogram
+    fmin, fmax = freq.min(), freq.max()
+    start = np.floor(fmin / bin_width) * bin_width
+    stop  = np.ceil(fmax  / bin_width) * bin_width + bin_width
+    edges = np.arange(start, stop, bin_width)
 
-    start = np.floor(fmin / bin_width_thz) * bin_width_thz
-    stop  = np.ceil(fmax / bin_width_thz) * bin_width_thz + bin_width_thz
-    bins = np.arange(start, stop, bin_width_thz)
-
-    # Fast histogram in NumPy
-    counts, edges = np.histogram(freq, bins=bins)
-
-    # Bin centers
+    counts, edges = np.histogram(freq, bins=edges)
     centers = 0.5 * (edges[:-1] + edges[1:])
 
-    # Drop first and last points
-    counts = counts[1:-1]
+    # Drop edge bins (inj + end)
     centers = centers[1:-1]
+    counts  = counts[1:-1]
+    
+    binned_df = pd.DataFrame({'Bin center': centers, 'Count': counts})
+    return binned_df, edges
 
-    binned_df = pd.DataFrame({
-        'Bin center': centers,
-        'Count': counts,
-    })
+def bin_per_cycle(df, bin_edges):
+    by_cycle = df.groupby('Cycle No.')
+    nbins = len(bin_edges) - 1
+    acc = np.zeros(nbins)
+    n_cycles = 0
 
+    for _, g in by_cycle:
+        freq = g['Laser Frequency (THz)'].to_numpy()
+        counts, _ = np.histogram(freq, bins=bin_edges)
+        acc += counts
+        n_cycles += 1
+
+    mean_counts = acc / max(n_cycles, 1)
+    centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+    binned_df = pd.DataFrame({'Bin center': centers, 'Count': counts})
     return binned_df
-
 
 
 def main(folder_path): 
@@ -120,6 +123,7 @@ def main(folder_path):
       
         preprocessed_df = noise_handling(raw_df, noise_df=ch0_info)
         # doppler_df = doppler_shift_calc(raw_df, isotope)
-        binned_df = bin_events(preprocessed_df)
+        binned_df, edges = bin_events(preprocessed_df)
+        bin_per_cycle_df = bin_per_cycle(preprocessed_df, edges)
 
-        yield binned_df, filename, isotope
+        yield binned_df, bin_per_cycle_df, filename, isotope

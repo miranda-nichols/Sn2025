@@ -1,11 +1,11 @@
 from scipy.constants import speed_of_light
 import numpy as np
 
-def getshift(freqs,isotope,measured_voltage):
+def getshift(freqs,isotope):
     vals_shifted_down = []
     vals_shifted_up = []
     values = freqs # THz
-    voltage = np.abs(measured_voltage) # V
+    voltage = 30000 # V
     mass = isotope # in amu
     amu_to_kg = 1.6605418E-27
     fundamental_charge = 1.60218E-19

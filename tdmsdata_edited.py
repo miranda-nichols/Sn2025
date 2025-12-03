@@ -69,6 +69,10 @@ class TdmsData(object):
 
         channels = self.groupchannels[groupname]
 
+        if not channels:   # empty list
+            # raise ValueError(f"No channels found in group {groupname}")
+            return None
+
         with TdmsFile.open(self.filepath) as f:
             for i,c in enumerate(channels):
                 c_data = f[groupname][c][:]

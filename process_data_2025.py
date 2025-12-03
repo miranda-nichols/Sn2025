@@ -65,26 +65,61 @@ def doppler_shift(df, isotope):
     df['Idler Frequency'] = shifted_freq
     return df
 
-def bin_events(df):
-    freq = df['Idler Frequency'].to_numpy()
-    bin_width = 7e-5
+def bin_events(df,
+    freq_col="Idler Frequency",
+    n_bins=120,               # TRY 80 → 150 depending on dataset
+    smooth_window=3
+):
+    freq = df[freq_col].to_numpy()
+    freq = freq[np.isfinite(freq)]
 
-    # Build uniform grid and histogram
     fmin, fmax = freq.min(), freq.max()
-    start = np.floor(fmin / bin_width) * bin_width
-    stop  = np.ceil(fmax  / bin_width) * bin_width + bin_width
-    edges = np.arange(start, stop, bin_width)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    n_bins = len(centers)
+    edges = np.linspace(fmin, fmax, n_bins + 1)
 
+    # simple histogram (no weights yet!)
     counts, edges = np.histogram(freq, bins=edges)
+    centers = 0.5*(edges[:-1] + edges[1:])
 
-    # Drop edge bins (inj + end)
-    centers = centers[1:-2]
-    counts  = counts[1:-2]
-    
+    # optional smoothing
+    if smooth_window > 1:
+        kernel = np.ones(smooth_window) / smooth_window
+        counts = np.convolve(counts, kernel, mode="same")
+
+    widths = np.diff(edges)
+    print(widths.min(), widths.max())
+
+    mask = counts > 0
+    centers = centers[mask][1:-3]
+    counts  = counts[mask][1:-3]
+
     binned_df = pd.DataFrame({'Bin center': centers, 'Count': counts})
     return binned_df
+
+
+# def bin_events(df):
+#     freq = df['Idler Frequency'].to_numpy()
+#     bin_width = 7e-5
+
+#     # Build uniform grid and histogram
+#     fmin, fmax = freq.min(), freq.max()
+#     start = np.floor(fmin / bin_width) * bin_width
+#     stop  = np.ceil(fmax  / bin_width) * bin_width + bin_width
+#     edges = np.arange(start, stop, bin_width)
+#     centers = 0.5 * (edges[:-1] + edges[1:])
+#     n_bins = len(centers)
+#     print(n_bins)
+
+#     counts, edges = np.histogram(freq, bins=edges)
+
+#     counts = _smooth_counts(counts.astype(float))
+
+#     # Drop edge bins (inj + end) and bins with no counts 
+#     mask = counts > 0
+#     centers = centers[mask][1:-3]
+#     counts  = counts[mask][1:-3]
+    
+#     binned_df = pd.DataFrame({'Bin center': centers, 'Count': counts})
+#     return binned_df
 
 def main(folder_path): 
     for tdms_path in natsorted(folder_path.glob("*.tdms"), key=lambda p: p.name):

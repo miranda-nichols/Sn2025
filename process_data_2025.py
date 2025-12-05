@@ -68,12 +68,7 @@ def clean_data(signal_df, noise_df): # removes na and freqs<0, cycles with noise
     return signal_df
 
 def drop_lower_branch(df, freq_col='Laser Frequency (THz)'):
-    """
-    Permanently remove the lower-frequency scan branch.
-    Works even if the two scans overlap slightly.
-    """
-
-      # x = index (or use a real x-column if you have one)
+    # x = index (or use a real x-column if you have one)
     x = np.arange(len(df))
     y = df[freq_col].to_numpy().astype(float)
 
@@ -116,8 +111,8 @@ def bin_events(df, n_bins=120, smooth_window=3):
     
     # Drop edge bins (inj + end) and bins with no counts 
     mask = counts > 0
-    centers = centers[mask][1:-3]
-    counts  = counts[mask][1:-3]
+    centers = centers[mask][2:-3]
+    counts  = counts[mask][2:-3]
 
     binned_df = pd.DataFrame({'Bin center': centers, 'Count': counts})
     return binned_df
@@ -165,7 +160,7 @@ def main(folder_path):
         raw_data = read_tdms(folder_path, filename, channel=1) 
         raw_df = create_df(raw_data)
 
-        if isotope == 116:
+        if '116_set7' in filename:
             raw_df = drop_lower_branch(raw_df)
 
         # Read noise channel
